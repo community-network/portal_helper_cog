@@ -8,7 +8,7 @@ import the cog with
 
 ```py
 async def setup(bot: commands.Bot) -> None:
-    await bot.add_cog(Battlefield_2042_Private(bot))
+    await bot.add_cog(Battlefield_2042(bot))
 ```
 
 or use it inside another cog
