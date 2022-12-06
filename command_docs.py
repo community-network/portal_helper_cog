@@ -1,13 +1,14 @@
+import re
 import random
-import asyncio
-from requests import get
-import json
 import discord
 from discord import app_commands
 from typing import List
-from pathlib import Path
 from rapidfuzz import fuzz
 from . import shared
+from .utils.github_api import DataHandler, CleanDoc
+
+dh = DataHandler()
+dh.load_data()
 
 async def autocomplete_blocks(
         interaction: discord.Interaction,
@@ -22,6 +23,7 @@ async def get_autocomplete_blocks(
     ) -> List[app_commands.Choice[str]]:
     """
     Returns a list of 25 elements, sorted by highest fuzz.ratio.
+    
     :param ctx: block name
     :param closest_match: only Returns the closest match
     :return: list
@@ -34,86 +36,75 @@ async def get_autocomplete_blocks(
     if closest_match:
         return blocks[0]
     return blocks
-    
 
-class DataHandler:
-    def __init__(self, update: bool = True):
-        self.github_endpoint = r"https://api.github.com/repos/battlefield-portal-community/portal-docs/contents/docs_json"
-        self.local_file_path = Path(__file__).parents[1] / "data/blocks_info"
-        Path(self.local_file_path).parent.mkdir(exist_ok=True)
-        Path(self.local_file_path).touch(exist_ok=True)
-        self.docs_dict = dict()
-        if update:
-            self.update_data()
+class RuleBlockPages:
 
-    def update_data(self):
-        print("Updating GitHub data")
-        github_content_json = get(self.github_endpoint).json()
-        for item in github_content_json:
-            if item['name'] == ".gitignore":
-                continue
-            self.docs_dict[Path(item['name']).stem] = item['download_url']
+    def __init__(self, clean_doc: CleanDoc):
 
-        with open(self.local_file_path, 'w') as FILE:
-            json.dump(self.docs_dict, FILE)
-        print("Updating GitHub Complete")
+        self.event_groups = ["Rule", "OnGoing", "OnPlayer", "OnCapture", "OnMCOM", "OnGameMode", "OnVehicle"]
+        self.options = {"Description": ''}
+        summary = clean_doc['summary'][220:]
+        re_groups = list(re.finditer(r"^\*\*.*\*\*$", summary, flags=re.MULTILINE))
+        re_groups_len = len(re_groups)
+        for index, event in enumerate(re_groups):
+            if index != re_groups_len - 1:
+                desc = summary[event.end():re_groups[index + 1].start() - 1]
+            else:
+                desc = summary[event.end():]
+            self.options[event.group().replace("*", '')] = desc
 
-    def load_data(self):
-        print("Loading GitHub Data")
-        with open(self.local_file_path) as FILE:
-            tmp = FILE.read()
-        try:
-            json_data = json.loads(tmp)
-        except json.JSONDecodeError:
-            raise
+        self.pages = [
+            discord.Embed(
+                title="Rule",
+                description=clean_doc['summary'][0:184]
+            ),
+            discord.Embed(
+                title="OnGoing Events",
+                description=self.options['Ongoing']
+            ),
 
-        self.docs_dict = json_data
-        print("Loading GitHub Data Complete")
-
-    def get_doc(self, target: str):
-        if target not in self.docs_dict.keys():
-            raise ValueError("Specified Block not found")
-
-        url = self.docs_dict[target]
-        data = get(url)
-        if data.status_code != 200:
-            raise ValueError(f"Unable to get {target} from github, api url {url}")
-        return json.loads(data.text)
-
-
-dh = DataHandler()
-dh.load_data()
-
-if __name__ == "__main__":
-    dh = DataHandler(update=True)
-    dh.load_data()
-    # dh.update_data()
-    print(asyncio.run(autocomplete_blocks(None, "EnableCapturePointDeploying")))
-
-def special_embeds(block_name):
-    if block_name == "rule":
-        doc_list = [i for i in dh.get_doc("rule").split("\n") if i != ""]
-
-        fields_list = []
-        for i in range(4, len(doc_list) - 1, 2):
-            fields_list.append({
-                "name": doc_list[i],
-                "value": doc_list[i + 1],
-                "inline": False
-            })
-
-        embed = discord.Embed(
-            title=make_bold(doc_list[0]),
-            url=f"https://docs.bfportal.gg/docs/blocks/{doc_list[0]}",
-            description=doc_list[1] + f"\n**{doc_list[3]}**",
-            color=random.choice(shared.COLORS),
+        ]
+        self.pages[0].set_image(
+            url="https://raw.githubusercontent.com/battlefield-portal-community/Image-CDN/main/portal_blocks/Rule.png"
         )
-        for field in fields_list:
-            embed.add_field(**field)
-        return embed
 
-    if block_name == "all":
-        pass
+        for event in self.event_groups[2:]:
+            embed = discord.Embed(
+                title=f"{event.replace('On','', 1)} Events"
+            )
+            [
+                embed.add_field(
+                    name=local_event,
+                    value=value,
+                    inline=False
+                ) for local_event, value in self.options.items() if local_event.startswith(event)
+            ]
+            if event == "OnPlayer":
+                for _ in ["OnMandown", "OnRevived"]:
+                    embed.add_field(
+                        name=_,
+                        value=self.options[_],
+                        inline=False
+                    )
+            self.pages.append(embed)
+
+# async def rule_block_pagination(ctx: discord.ApplicationContext):
+#     rule_block_pages = RuleBlockPages(dh.get_doc("Rule"))
+#     page_groups = [
+#         pages.PageGroup(
+#             pages=[page],
+#             label=f"{option} Events",
+#         ) for option, page in zip(rule_block_pages.event_groups, rule_block_pages.pages)
+#     ]
+#     paginator = pages.Paginator(
+#         pages=page_groups,
+#         show_menu=True,
+#         menu_placeholder="Choose Event Type",
+#         show_disabled=False,
+#         show_indicator=False,
+#         timeout=None,
+#     )
+#     await paginator.respond(ctx.interaction, ephemeral=False)
 
 
 def make_bold(text):
@@ -128,26 +119,23 @@ def make_bold(text):
 
 def make_embed(block_name: str) -> discord.Embed:
     """
-    Parses data returned by Github Api and returns an embed
+    Parses data returned by GitHub Api and returns an embed
     :param block_name: str
     :return: discord.Embed
     """
-    img = 'Rule' if block_name.lower() == 'rule' else block_name
-    image_url = f"https://raw.githubusercontent.com/battlefield-portal-community/Image-CDN/main/portal_blocks/{img}.png"
+    image_url = f"https://raw.githubusercontent.com/battlefield-portal-community/Image-CDN/main/portal_blocks/{block_name}.png"
     if block_name == "all":
         # todo: Show Complete list of all blocks
         raise NotImplementedError("command to get all blocks not implemented yet")
         # return special_embeds("all")
-    elif block_name == "rule":
-        return special_embeds("rule")
     elif block_name in dh.docs_dict.keys():
         doc = dh.get_doc(str(block_name))
     else:
-        closet_match = autocomplete_blocks(None, block_name, closest_match=True)
+        closet_match = get_autocomplete_blocks(block_name, closest_match=True)
         if closet_match != "rule":
             doc = dh.get_doc(closet_match)
         else:
-            return special_embeds("rule")
+            raise ValueError(f"Unknown Block {block_name}")
 
     embed_fields = []
     if 'inputs' in doc.keys():
