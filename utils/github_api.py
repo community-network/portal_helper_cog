@@ -7,8 +7,8 @@ from requests import get
 class CleanDoc(TypedDict):
     block: str
     summary: str
-    inputs: Optional[list]
-    output: Optional[list]
+    inputs: list | None
+    output: list | None
 
 
 class DataHandler:

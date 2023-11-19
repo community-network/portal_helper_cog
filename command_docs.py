@@ -14,14 +14,14 @@ dh.load_data()
 
 async def autocomplete_blocks(
     interaction: discord.Interaction, current: str
-) -> List[app_commands.Choice[str]]:
+) -> list[app_commands.Choice[str]]:
     """For discord.py"""
     return await get_autocomplete_blocks(interaction, current)
 
 
 async def get_autocomplete_blocks(
     _interaction: discord.Interaction, current: str, closest_match: bool = False
-) -> List[app_commands.Choice[str]]:
+) -> list[app_commands.Choice[str]]:
     """
     Returns a list of 25 elements, sorted by highest fuzz.ratio.
 
