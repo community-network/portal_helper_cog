@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from typing import TypedDict, Optional
 from requests import get
+import logging
+
 
 class CleanDoc(TypedDict):
     block: str
@@ -13,8 +15,11 @@ class CleanDoc(TypedDict):
 
 class DataHandler:
     def __init__(self, update: bool = True):
-        self.github_endpoint = ("https://api.github.com/repos/battlefield-portal-community"
-                                "/portal-docs/contents/generators/blocks_json/docs_json")        
+        self.logger = logging.getLogger("portal_helper_cog")
+        self.github_endpoint = (
+            "https://api.github.com/repos/battlefield-portal-community"
+            "/portal-docs/contents/generators/blocks_json/docs_json"
+        )
         self.local_file_path = Path(__file__).parents[1] / "data/blocks_info"
         self.cache = dict()
         Path(self.local_file_path).parent.mkdir(exist_ok=True)
@@ -24,20 +29,20 @@ class DataHandler:
             self.update_data()
 
     def update_data(self):
-        print("Updating GitHub data")
+        self.logger.info("Updating GitHub data")
         github_content_json = get(self.github_endpoint).json()
         for item in github_content_json:
-            if item['name'] == ".gitignore":
+            if item["name"] == ".gitignore":
                 continue
-            self.docs_dict[Path(item['name']).stem] = item['download_url']
+            self.docs_dict[Path(item["name"]).stem] = item["download_url"]
 
-        with open(self.local_file_path, 'w') as FILE:
+        with open(self.local_file_path, "w") as FILE:
             json.dump(self.docs_dict, FILE)
         self.cache.clear()
-        print("Updating GitHub Complete")
+        self.logger.info("Updating GitHub Complete")
 
     def load_data(self):
-        print("Loading GitHub Data")
+        self.logger.info("Loading GitHub Data")
         with open(self.local_file_path) as FILE:
             tmp = FILE.read()
         try:
@@ -46,14 +51,14 @@ class DataHandler:
             raise
 
         self.docs_dict = json_data
-        print("Loading GitHub Data Complete")
+        self.logger.info("Loading GitHub Data Complete")
 
     def get_doc(self, target: str) -> CleanDoc:
         if target not in self.docs_dict.keys():
             raise ValueError("Specified Block not found")
 
         if target not in self.cache.keys():
-            print(f"cache miss:- {target}")
+            self.logger.info(f"cache miss:- {target}")
             url = self.docs_dict[target]
             data = get(url)
             if data.status_code != 200:
@@ -66,7 +71,7 @@ class DataHandler:
 if __name__ == "__main__":
     dh = DataHandler(update=False)
     dh.load_data()
-    doc = dh.get_doc("Rule")['summary'][220:]
+    doc = dh.get_doc("Rule")["summary"][220:]
     f = list(re.finditer(r"^\*\*.*\*\*$", doc, flags=re.MULTILINE))
     for index, match in enumerate(f):
-        print(index, match.group())
+        self.logger.info(index, match.group())
