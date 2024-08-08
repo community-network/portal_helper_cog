@@ -6,14 +6,17 @@ from discord import app_commands
 from . import tool_list, command_docs
 
 
-class Battlefield_2042(commands.GroupCog, name="bf2042"):
+class Battlefield_2042(commands.Cog, name="bf2042"):
     """Battlefield 2042 public tools"""
 
     def __init__(self, bot: commands.AutoShardedBot):
         self.bot = bot
         super().__init__()
 
-    @app_commands.command(
+    group = app_commands.Group(name="bf2042", description="Battlefield 2042 public tools cog")
+    group.allowed_installs = app_commands.AppInstallationType(guild=True, user=True)
+    
+    @group.command(
         name="tools",
         description="Shows a list of tools made by the Battlefield community.",
     )
@@ -28,7 +31,7 @@ class Battlefield_2042(commands.GroupCog, name="bf2042"):
         embed = discord.Embed(color=0xE74C3C, description="Failed to get list of tools")
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(
+    @group.command(
         name="portal",
         description="Returns the documentation of a block used in portal's rule editor.",
     )
